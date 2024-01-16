@@ -6,7 +6,7 @@ import requests
 import datetime
 import time
 
-PLOT_GRAPH = False
+PLOT_GRAPH = True
 pushback_interval_seconds = 60
 
 
@@ -114,7 +114,8 @@ def set_priorities(window_size_seconds=60, priority_step=50):
             response_parameter[k] = []
         calls_number[k].append(len(performance[k]))
         response_parameter[k].append(v)
-    
+    print(f"response_parameter={response_parameter}")
+    print(f"calls_number={calls_number}")
     change_priority_dict = {}
     sorted_names = sorted(performance_avg, key=performance_avg.get)
     # set priority based on performance. if the next performance value is bigger than previous value + priority_step, then set the priority to previous value + 1
@@ -162,10 +163,10 @@ def set_priorities(window_size_seconds=60, priority_step=50):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
-    calls_number = {}
-    response_parameter = {}
+    calls_number_plot = {}
+    response_parameter_plot = {}
     timestamps = []
-    change_priority_dict = {}
+    change_priority_dict_plot = {}
 
 
     def update_plot(response_parameter, calls_number, change_priority_dict):
@@ -221,5 +222,22 @@ if __name__ == "__main__":
     
     while True:
         response_parameter, calls_number, change_priority_dict = set_priorities(window_size_seconds=60, priority_step=50)
-        update_plot(response_parameter, calls_number, change_priority_dict)
+        print(f"response_parameter={response_parameter}")
+        print(f"calls_number={calls_number}")
+        print(f"change_priority_dict={change_priority_dict}")
+        for k in calls_number.keys():
+            if k not in calls_number_plot:
+                calls_number_plot[k] = []
+            calls_number_plot[k] += calls_number[k]
+        for k in response_parameter.keys():
+            if k not in response_parameter_plot:
+                response_parameter_plot[k] = []
+            response_parameter_plot[k] += response_parameter[k]
+        for k in change_priority_dict.keys():
+            if k not in change_priority_dict_plot:
+                change_priority_dict_plot[k] = []
+            change_priority_dict_plot[k].append(change_priority_dict[k])
+        
+            
+        update_plot(response_parameter_plot, calls_number_plot, change_priority_dict_plot)
         time.sleep(10)  # Adjust the sleep time as needed
