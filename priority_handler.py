@@ -104,6 +104,7 @@ def set_priorities(window_size_seconds=60, priority_step=50):
     change_priority_dict = {}
     sorted_names = sorted(performance_avg, key=performance_avg.get)
     # set priority based on performance. if the next performance value is bigger than previous value + priority_step, then set the priority to previous value + 1
+    final_priority = 0
     for idx, n in enumerate(sorted_names):
         if idx == 0:
             change_priority_dict[n[:-7]] = 0
@@ -112,13 +113,14 @@ def set_priorities(window_size_seconds=60, priority_step=50):
                 change_priority_dict[n[:-7]] = change_priority_dict[sorted_names[idx-1][:-7]] + 1
             else:
                 change_priority_dict[n[:-7]] = change_priority_dict[sorted_names[idx-1][:-7]] 
+        final_priority = idx
 
     # check which backend is missing in the priority list and count the last time it was called from cosmos db
     for backend in backends:
         logging.info(f"Checking backend {backend}")
     # Make sure 'backend' is a valid string for use in the query
         if not any(backend.startswith(prefix) for prefix in change_priority_dict):
-            change_priority_dict[backend+"/openai"] = idx + 1
+            change_priority_dict[backend+"/openai"] = final_priority + 1
             calls_number[backend+"/openai"] = [0]
             response_parameter[backend+"/openai"] = [0]
             try:
