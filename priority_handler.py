@@ -7,6 +7,8 @@ import datetime
 import time
 
 PLOT_GRAPH = False
+pushback_interval_seconds = 60
+
 
 cosmos_db_url = os.environ.get('COSMOS_DB_URL', 'https://openai-logger.documents.azure.com:443/')
 cosmos_db_key = os.environ.get('COSMOS_DB_KEY')
@@ -37,6 +39,25 @@ def parse_datetime(dt_str):
         datetime_str = main_part + '.' + fractional_part
     return datetime.datetime.fromisoformat(datetime_str)
 
+def get_backends(client):
+    container_client = client.get_database_client(database_name).get_container_client("backends")
+    backends = []
+    for item in container_client.query_items(
+            query="SELECT * FROM c",
+            enable_cross_partition_query=True):
+        print(item)
+        if item.get('backends'):
+            backends+=item['backends']
+    print(f"backends={backends}")
+    return backends
+
+def get_docs_from_cosmos(client, query):
+    docs = []
+    for item in client.query_items(
+            query=query,
+            enable_cross_partition_query=True):
+        docs.append(item)
+    return docs
 
 def set_priorities(window_size_seconds=60, priority_step=50):
     calls_number = {}
@@ -45,7 +66,7 @@ def set_priorities(window_size_seconds=60, priority_step=50):
 
     # Initialize the Cosmos client
     client = CosmosClient(cosmos_db_url, credential=cosmos_db_key)
-
+    backends = get_backends(client)
     # Get the container client
     container_client = client.get_database_client(database_name).get_container_client(container_name)
     
@@ -57,11 +78,10 @@ def set_priorities(window_size_seconds=60, priority_step=50):
     # Query to get documents uploaded in the last minute
     query = f"SELECT * FROM c WHERE c._ts > {ts_th}"
     performance = {}
-
+    items = get_docs_from_cosmos(container_client, query)
+    print(f"items={items}")
     # Execute the query
-    for idx, item in enumerate(container_client.query_items(
-            query=query,
-            enable_cross_partition_query=True)):
+    for idx, item in enumerate(items):
         print(f"---item {idx}---")
         start_time_str = item.get("StartTime")
         end_time_str = item.get("EndTime")
@@ -76,6 +96,9 @@ def set_priorities(window_size_seconds=60, priority_step=50):
             print (f"response_time_ms={response_time_ms}")
             print(f"CompletionTokens={CompletionTokens}")
             print(f"token_response_time_ratio={token_response_time_ratio}")
+            print(item['_ts'])
+            print(int(time.time()))
+            print(f"time since doc creation={int(time.time()) - item['_ts']}")
 
             if backendUrl not in performance:
                 performance[backendUrl] = []
@@ -106,6 +129,30 @@ def set_priorities(window_size_seconds=60, priority_step=50):
                 change_priority_dict[n[:-7]] = change_priority_dict[sorted_names[idx-1][:-7]] + 1
             else:
                 change_priority_dict[n[:-7]] = change_priority_dict[sorted_names[idx-1][:-7]] 
+
+    # check which backend is missing in the priority list and count the last time it was called from cosmos db
+    for backend in backends:
+    # Make sure 'backend' is a valid string for use in the query
+        if not any(backend.startswith(prefix) for prefix in change_priority_dict):
+            try:
+                query = f"SELECT TOP 1 * FROM c WHERE STARTSWITH(c.backendUrl, '{backend}') ORDER BY c._ts DESC"
+                items = list(container_client.query_items(
+                        query=query,
+                        enable_cross_partition_query=True))
+
+                # Check if any items were returned
+                if items:
+                    item = items[0]
+                    last_time = item['_ts']
+                    print(f"backend={backend} last_time={last_time}")
+
+                    if int(time.time()) - last_time > pushback_interval_seconds:
+                        change_priority_dict[backend] = 0
+                else:
+                    print(f"No records found for backend={backend}")
+            except azure.cosmos.exceptions.CosmosHttpResponseError as e:
+                print(f"Error querying Cosmos DB: {e}")
+
 
     change_priority(api_url, change_priority_dict)
     return response_parameter, calls_number, change_priority_dict
@@ -168,11 +215,11 @@ if __name__ == "__main__":
     database_name = os.environ.get('COSMOS_DB_DATABASE_NAME', 'openai-logger')
     container_name = os.environ.get('COSMOS_DB_CONTAINER_NAME', 'openai-logger-events')
     api_url = os.environ.get('API_URL', 'https://apim-openai-lb.azure-api.net/set_be_priority')
-    response_parameter, calls_number, change_priority_dict = set_priorities()
+    
     plt.figure()
     plt.ion()
     
     while True:
-        response_parameter, calls_number, change_priority_dict = set_priorities()
+        response_parameter, calls_number, change_priority_dict = set_priorities(window_size_seconds=60, priority_step=50)
         update_plot(response_parameter, calls_number, change_priority_dict)
-        time.sleep(1)  # Adjust the sleep time as needed
+        time.sleep(10)  # Adjust the sleep time as needed
