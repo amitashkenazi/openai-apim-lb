@@ -5,9 +5,7 @@ import json
 import time
 
 
-api_url = os.environ.get('API_URL', 'https://apim-openai-lb.azure-api.net/set_be_priority')
-
-def sample_region(api_url, url):
+def sample_region(url):
     payload = json.dumps({
         "messages": [
             {
@@ -23,7 +21,7 @@ def sample_region(api_url, url):
         'Content-Type': 'application/json',
         'backendURL': url
     }
-    response = requests.request("POST", f"{api_url}/chat/completions", headers=headers, data=payload)
+    response = requests.request("POST", f"{os.environ.get('API_URL')}/chat/completions", headers=headers, data=payload)
     return response
     
 
@@ -89,7 +87,7 @@ def set_priority(priority_step_ms=500, loop_interval=10, loops_count=6):
                 change_priority_dict[n] = change_priority_dict[sorted_names[idx-1]]
         
     logging.info(f"change_priority_dict: {change_priority_dict}")
-    change_priority(api_url, change_priority_dict)
+    change_priority(change_priority_dict)
     return average_response_time, change_priority_dict
 
 import unittest
@@ -127,7 +125,7 @@ class TestPriorityHandler(unittest.TestCase):
         sph.set_priority(priority_step_ms=500)
 
         # Assert the change_priority function was called with the correct parameters
-        mock_change_priority.assert_called_once_with(sph.api_url, expected_priorities)
+        mock_change_priority.assert_called_once_with(expected_priorities)
     
     @patch('simple_priority_handler.get_response_time')
     @patch('simple_priority_handler.change_priority')
@@ -143,7 +141,7 @@ class TestPriorityHandler(unittest.TestCase):
         sph.set_priority(priority_step_ms=299)
 
         # Assert the change_priority function was called with the correct parameters
-        mock_change_priority.assert_called_once_with(sph.api_url, expected_priorities)
+        mock_change_priority.assert_called_once_with(expected_priorities)
     
 
 if __name__ == '__main__':
