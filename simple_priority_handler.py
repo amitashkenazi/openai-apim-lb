@@ -39,14 +39,14 @@ def get_backends(url):
 
 def get_response_time(loop_interval, loops_count):
     response_times = {}
-    backends = get_backends(api_url)
+    backends = get_backends(os.environ.get('API_URL'))
     logging.info("calculate response time")
     for i in range(loops_count):
         logging.info(f"loop: {i}/{loops_count}")
         for backend in backends:
             logging.info(f"backend: {backend['url']}")
             start_time = time.time()*1000
-            res = sample_region(api_url, backend['url'])
+            res = sample_region(backend['url'])
             logging.info(f"response backend url: {res.headers['x-openai-backendurl']}")
             end_time = time.time()*1000
             logging.info(f"response time: {end_time - start_time}")
@@ -56,13 +56,13 @@ def get_response_time(loop_interval, loops_count):
         time.sleep(loop_interval)
     return response_times
 
-def change_priority(url, priorities):
+def change_priority(priorities):
     payload = json.dumps(priorities)
     headers = {
         'Ocp-Apim-Subscription-Key': os.environ["API_SUBSCRIPTION_KEY"],
         'Content-Type': 'application/json'
     }
-    response = requests.request("POST", f"{url}/set_be_priority", headers=headers, data=payload)
+    response = requests.request("POST", f"{os.environ.get('API_URL')}/set_be_priority", headers=headers, data=payload)
     if response.status_code == 200:
         logging.info("priority changed")
 
@@ -103,7 +103,7 @@ class TestPriorityHandler(unittest.TestCase):
         expected_payload = '{"backend1": 1, "backend2": 0}'
 
         # Call the function
-        sph.change_priority(url, priorities)
+        sph.change_priority(priorities)
         headers = {
             'Ocp-Apim-Subscription-Key': os.environ["API_SUBSCRIPTION_KEY"],
             'Content-Type': 'application/json'
@@ -143,6 +143,19 @@ class TestPriorityHandler(unittest.TestCase):
         # Assert the change_priority function was called with the correct parameters
         mock_change_priority.assert_called_once_with(expected_priorities)
     
+    
+    @patch('requests.post')
+    def test_sample_region(self, mock_post):
+        # Setup
+        region = 'us-west-1'
+        expected_result = 'some expected result'
+        mock_post.return_value.json.return_value = expected_result
+        os.environ["API_SUBSCRIPTION_KEY"] = '123'
+
+        # Call the function
+        actual_result = sph.sample_region(region)
+
+
 
 if __name__ == '__main__':
     # init logging with line number in the filw
