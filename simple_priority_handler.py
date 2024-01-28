@@ -3,7 +3,6 @@ import requests
 import logging
 import json
 import time
-from pprint import pprint
 
 
 api_url = os.environ.get('API_URL', 'https://apim-openai-lb.azure-api.net/set_be_priority')
@@ -35,10 +34,12 @@ def get_backends(url):
     }
     get_backends_url = f"{url}/get_backends"    
     response = requests.request("GET", get_backends_url, headers=headers, data="")
-    logging.info(f"get_backends response: {response.text}")
+    logging.info("found the following backends:")
+    for backend in json.loads(response.text):
+        logging.info(backend['url'])
     return  json.loads(response.text)
 
-def get_response_time(loop_interval = 10, loops_count = 6):
+def get_response_time(loop_interval, loops_count):
     response_times = {}
     backends = get_backends(api_url)
     logging.info("calculate response time")
@@ -58,19 +59,18 @@ def get_response_time(loop_interval = 10, loops_count = 6):
     return response_times
 
 def change_priority(url, priorities):
-    print("change priority")
-    print(f"priorities: {priorities}")
     payload = json.dumps(priorities)
     headers = {
         'Ocp-Apim-Subscription-Key': os.environ["API_SUBSCRIPTION_KEY"],
         'Content-Type': 'application/json'
     }
     response = requests.request("POST", f"{url}/set_be_priority", headers=headers, data=payload)
-    logging.info(response.text)
+    if response.status_code == 200:
+        logging.info("priority changed")
 
 
-def set_priority(priority_step_ms=500):
-    response_time = get_response_time()
+def set_priority(priority_step_ms=500, loop_interval=10, loops_count=6):
+    response_time = get_response_time(loop_interval, loops_count)
     average_response_time = {}
     logging.info("calculate average response time")
     for backend, response_times in response_time.items():
@@ -90,6 +90,7 @@ def set_priority(priority_step_ms=500):
         
     logging.info(f"change_priority_dict: {change_priority_dict}")
     change_priority(api_url, change_priority_dict)
+    return average_response_time, change_priority_dict
 
 import unittest
 from unittest.mock import patch
@@ -146,19 +147,9 @@ class TestPriorityHandler(unittest.TestCase):
     
 
 if __name__ == '__main__':
-    # init logging
-    logging.basicConfig(
-        format='%(asctime)s %(levelname)s %(message)s',
-        level=logging.INFO
-    )
+    # init logging with line number in the filw
+    logging.basicConfig(format='%(asctime)s %(levelname)s %(message)s', level=logging.INFO)
     unittest.main()
-
-if __name__ == "__main__":
-    # enable logging
-    logging.basicConfig(
-        format='%(asctime)s %(levelname)s %(message)s',
-        level=logging.INFO
-    )
-    # start unittest
-    unittest.main()
-    # set_priority()
+    # while True:
+    #     average_response_time, change_priority_dict = set_priority(50, 10, 1)
+        
